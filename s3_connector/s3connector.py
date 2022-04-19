@@ -5,7 +5,8 @@ from __future__ import print_function
 __author__ = "bibow"
 
 import boto3, csv, xmltodict, json
-from io import StringIO
+import pandas as pd
+from io import StringIO, BytesIO
 from dicttoxml import dicttoxml
 from datetime import datetime
 from xml.dom.minidom import parseString
@@ -52,28 +53,32 @@ class S3Connector(object):
         return new_row
 
     def get_rows(self, bucket, key, new_line="\r\n"):
-        coding = self.setting.get("file_encoding", "utf-8")
-
+        rows = []
         obj = self.s3.get_object(Bucket=bucket, Key=key)
         content = obj["Body"].read()
-        content = content.decode(coding)
-        lines = content.split(new_line)
-        rows = []
-        for row in csv.DictReader(lines):
-            row = self.remove_empty_value(row)
-            if row:
+        if key.find(".xlsx") != -1:
+            df = pd.read_excel(BytesIO(content))
+            for row in df.to_dict("records"):
                 row.update({"LastModified": obj["LastModified"]})
                 rows.append(row)
+        else:
+            content = content.decode(self.setting.get("file_encoding", "utf-8"))
+            lines = content.split(new_line)
+            for row in csv.DictReader(lines):
+                row = self.remove_empty_value(row)
+                if row:
+                    row.update({"LastModified": obj["LastModified"]})
+                    rows.append(row)
 
         # If it is the original csv file, copy to archive bucket.
-        if key.find(".csv") != -1:
-            self.s3.copy_object(
-                CopySource={"Bucket": bucket, "Key": key},
-                Bucket=bucket,
-                Key=f"archive/{datetime.utcnow().strftime('%Y-%m-%d')}/{key}",
-            )
+        # if key.find(".csv") != -1 or key.find(".xlsx") != -1:
+        #     self.s3.copy_object(
+        #         CopySource={"Bucket": bucket, "Key": key},
+        #         Bucket=bucket,
+        #         Key=f"archive/{datetime.utcnow().strftime('%Y-%m-%d')}/{key}",
+        #     )
 
-        self.s3.delete_object(Bucket=bucket, Key=key)
+        # self.s3.delete_object(Bucket=bucket, Key=key)
 
         # If there are 200 rows only, return the data.
         if len(rows) <= 200:
