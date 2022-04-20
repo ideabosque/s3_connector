@@ -71,14 +71,14 @@ class S3Connector(object):
                     rows.append(row)
 
         # If it is the original csv file, copy to archive bucket.
-        # if key.find(".csv") != -1 or key.find(".xlsx") != -1:
-        #     self.s3.copy_object(
-        #         CopySource={"Bucket": bucket, "Key": key},
-        #         Bucket=bucket,
-        #         Key=f"archive/{datetime.utcnow().strftime('%Y-%m-%d')}/{key}",
-        #     )
+        if key.find(".csv") != -1 or key.find(".xlsx") != -1:
+            self.s3.copy_object(
+                CopySource={"Bucket": bucket, "Key": key},
+                Bucket=bucket,
+                Key=f"archive/{datetime.utcnow().strftime('%Y-%m-%d')}/{key}",
+            )
 
-        # self.s3.delete_object(Bucket=bucket, Key=key)
+        self.s3.delete_object(Bucket=bucket, Key=key)
 
         # If there are 200 rows only, return the data.
         if len(rows) <= 200:
