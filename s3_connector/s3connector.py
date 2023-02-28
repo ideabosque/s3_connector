@@ -4,13 +4,14 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import boto3, csv, xmltodict, json
+import boto3, csv, xmltodict, json, base64, pydocparser
 import pandas as pd
 from io import StringIO, BytesIO
 from dicttoxml import dicttoxml
 from datetime import datetime
 from xml.dom.minidom import parseString
 from time import sleep
+from tenacity import retry, wait_exponential, stop_after_attempt
 from silvaengine_utility import Utility
 
 
@@ -19,6 +20,9 @@ class S3Connector(object):
         self.logger = logger
         self.setting = setting
         self.s3 = self.connect()
+        if setting.get("docparser_api_key"):
+            self.docparser = pydocparser.Parser()
+            self.docparser.login(setting.get("docparser_api_key"))
 
     def connect(self):
         if (
@@ -43,6 +47,14 @@ class S3Connector(object):
     def s3(self, s3):
         self._s3 = s3
 
+    @property
+    def docparser(self):
+        return self._docparser
+
+    @docparser.setter
+    def docparser(self, docparser):
+        self._docparser = docparser
+
     def remove_empty_value(self, row):
         new_row = {}
         for key, value in row.items():
@@ -51,6 +63,15 @@ class S3Connector(object):
             if key != "" and value != "":
                 new_row[key] = value
         return new_row
+
+    def archive_object(self, bucket, key):
+        self.s3.copy_object(
+            CopySource={"Bucket": bucket, "Key": key},
+            Bucket=bucket,
+            Key=f"archive/{datetime.utcnow().strftime('%Y-%m-%d')}/{key}",
+        )
+
+        self.s3.delete_object(Bucket=bucket, Key=key)
 
     def get_rows(self, bucket, key, new_line="\r\n"):
         rows = []
@@ -70,15 +91,8 @@ class S3Connector(object):
                     row.update({"LastModified": obj["LastModified"]})
                     rows.append(row)
 
-        # If it is the original csv file, copy to archive bucket.
-        if key.find(".csv") != -1 or key.find(".xlsx") != -1:
-            self.s3.copy_object(
-                CopySource={"Bucket": bucket, "Key": key},
-                Bucket=bucket,
-                Key=f"archive/{datetime.utcnow().strftime('%Y-%m-%d')}/{key}",
-            )
-
-        self.s3.delete_object(Bucket=bucket, Key=key)
+        # Copy to archive bucket.
+        self.archive_object(bucket, key)
 
         # If there are 200 rows only, return the data.
         if len(rows) <= 200:
@@ -101,6 +115,32 @@ class S3Connector(object):
             suffix += 1
             sleep(1)
         return []
+
+    @retry(
+        reraise=True,
+        wait=wait_exponential(multiplier=1, max=60),
+        stop=stop_after_attempt(5),
+    )
+    def get_one_result(self, parser_name, document_id):
+        data = self.docparser.get_one_result(parser_name, document_id)
+        if not isinstance(data, list):
+            raise Exception(data)
+        return data
+
+    def get_data_by_docparser(self, bucket, key, parser_name):
+        obj = self.s3.get_object(Bucket=bucket, Key=key)
+        encoded_string = base64.b64encode(obj["Body"].read())
+        # document_id = self.docparser.upload_file_by_base64(
+        #     encoded_string, key.split("/")[-1], parser_name
+        # )
+        document_id = "2f4d6c51e1c815be8d74b34c80bfc384" 
+        # sleep(10)
+        data = self.get_one_result(parser_name, document_id)
+        
+        # Copy to archive bucket.
+        # self.archive_object(bucket, key)
+        
+        return data
 
     def dict_2_csv(self, data):
         rows = []
