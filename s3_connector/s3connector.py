@@ -130,16 +130,16 @@ class S3Connector(object):
     def get_data_by_docparser(self, bucket, key, parser_name):
         obj = self.s3.get_object(Bucket=bucket, Key=key)
         encoded_string = base64.b64encode(obj["Body"].read())
-        # document_id = self.docparser.upload_file_by_base64(
-        #     encoded_string, key.split("/")[-1], parser_name
-        # )
-        document_id = "2f4d6c51e1c815be8d74b34c80bfc384" 
-        # sleep(10)
+        document_id = self.docparser.upload_file_by_base64(
+            encoded_string, key.split("/")[-1], parser_name
+        )
+        # document_id = "d32e57c52d7da004947a2326ee51bd70"
+        sleep(10)
         data = self.get_one_result(parser_name, document_id)
-        
-        # Copy to archive bucket.
-        # self.archive_object(bucket, key)
-        
+
+        ## Copy to archive bucket.
+        self.archive_object(bucket, key)
+
         return data
 
     def dict_2_csv(self, data):
@@ -160,7 +160,7 @@ class S3Connector(object):
                     for item in _list
                 ]
 
-                # load attributes from dict.
+                ## load attributes from dict.
                 for value in list(filter(lambda v: isinstance(v, dict), data.values())):
                     rows = [
                         dict(row, **{k: v for k, v in value.items()}) for row in rows
@@ -209,7 +209,6 @@ class S3Connector(object):
             kwargs["Prefix"] = prefix
 
         while True:
-
             # The S3 API response is a large blob of metadata.
             # 'Contents' contains information about the listed objects.
             resp = self.s3.list_objects_v2(**kwargs)
