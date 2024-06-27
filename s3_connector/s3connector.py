@@ -103,15 +103,29 @@ class S3Connector(object):
         row_max_amount_keys = max(rows, key=lambda row: len(row.keys()))
         keys = row_max_amount_keys.keys()
         for i in range(0, len(rows), 200):
-            output = StringIO()
-            writer = csv.DictWriter(output, keys, delimiter=",")
-            writer.writeheader()
-            writer.writerows(rows[i : i + 200])
-            self.s3.put_object(
-                Bucket=bucket,
-                Key=key.replace(".csv", f".{suffix}"),
-                Body=output.getvalue(),
-            )
+            if key.find(".xlsx") != -1:
+                df = pd.DataFrame(rows[i : i + 200])
+                date_columns = df.select_dtypes(include=['datetime64[ns, UTC]']).columns
+                for date_column in date_columns:
+                    df[date_column] = df[date_column].dt.tz_localize(None)
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer) as writer:
+                    df.to_excel(excel_writer=writer, index=False)
+                self.s3.put_object(
+                    Bucket=bucket,
+                    Key=key.replace(".xlsx", f"-{suffix}.xlsx"),
+                    Body=buffer.getvalue(),
+                )
+            else:
+                output = StringIO()
+                writer = csv.DictWriter(output, keys, delimiter=",")
+                writer.writeheader()
+                writer.writerows(rows[i : i + 200])
+                self.s3.put_object(
+                    Bucket=bucket,
+                    Key=key.replace(".csv", f"-{suffix}.csv"),
+                    Body=output.getvalue(),
+                )
             suffix += 1
             sleep(1)
         return []
