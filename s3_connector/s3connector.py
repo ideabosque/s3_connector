@@ -13,6 +13,7 @@ from time import sleep
 from xml.dom.minidom import parseString
 
 import boto3
+import pandas as pd
 import pydocparser
 import xmltodict
 from dicttoxml import dicttoxml
@@ -80,8 +81,6 @@ class S3Connector(object):
         self.s3.delete_object(Bucket=bucket, Key=key)
 
     def get_rows(self, bucket, key, new_line="\r\n"):
-        import pandas as pd
-
         rows = []
         obj = self.s3.get_object(Bucket=bucket, Key=key)
         content = obj["Body"].read()
