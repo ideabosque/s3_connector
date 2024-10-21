@@ -4,14 +4,20 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import boto3, csv, xmltodict, json, base64, pydocparser
-import pandas as pd
-from io import StringIO, BytesIO
-from dicttoxml import dicttoxml
+import base64
+import csv
+import json
 from datetime import datetime
-from xml.dom.minidom import parseString
+from io import BytesIO, StringIO
 from time import sleep
-from tenacity import retry, wait_exponential, stop_after_attempt
+from xml.dom.minidom import parseString
+
+import boto3
+import pydocparser
+import xmltodict
+from dicttoxml import dicttoxml
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from silvaengine_utility import Utility
 
 
@@ -74,6 +80,8 @@ class S3Connector(object):
         self.s3.delete_object(Bucket=bucket, Key=key)
 
     def get_rows(self, bucket, key, new_line="\r\n"):
+        import pandas as pd
+
         rows = []
         obj = self.s3.get_object(Bucket=bucket, Key=key)
         content = obj["Body"].read()
@@ -105,7 +113,7 @@ class S3Connector(object):
         for i in range(0, len(rows), 200):
             if key.find(".xlsx") != -1:
                 df = pd.DataFrame(rows[i : i + 200])
-                date_columns = df.select_dtypes(include=['datetime64[ns, UTC]']).columns
+                date_columns = df.select_dtypes(include=["datetime64[ns, UTC]"]).columns
                 for date_column in date_columns:
                     df[date_column] = df[date_column].dt.tz_localize(None)
                 buffer = BytesIO()
