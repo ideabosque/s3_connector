@@ -78,7 +78,8 @@ class S3Connector(object):
         obj = self.s3.get_object(Bucket=bucket, Key=key)
         content = obj["Body"].read()
         if key.find(".xlsx") != -1:
-            df = pd.read_excel(BytesIO(content))
+            df = pd.read_excel(BytesIO(content), dtype=str)
+            df = df.where(pd.notnull(df), None)
             for row in df.to_dict("records"):
                 row.update({"LastModified": obj["LastModified"]})
                 rows.append(row)
