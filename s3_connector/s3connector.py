@@ -13,7 +13,8 @@ from time import sleep
 from xml.dom.minidom import parseString
 
 import boto3
-import pandas as pd
+# import pandas as pd
+import polars as pl
 import pydocparser
 import xmltodict
 from dicttoxml import dicttoxml
@@ -85,8 +86,12 @@ class S3Connector(object):
         obj = self.s3.get_object(Bucket=bucket, Key=key)
         content = obj["Body"].read()
         if key.find(".xlsx") != -1:
-            df = pd.read_excel(BytesIO(content))
-            for row in df.to_dict("records"):
+            # df = pd.read_excel(BytesIO(content))
+            # for row in df.to_dict("records"):
+            #     row.update({"LastModified": obj["LastModified"]})
+            #     rows.append(row)
+            df = pl.read_excel(BytesIO(content))
+            for row in df.iter_rows(named=True):
                 row.update({"LastModified": obj["LastModified"]})
                 rows.append(row)
         else:
@@ -111,13 +116,25 @@ class S3Connector(object):
         keys = row_max_amount_keys.keys()
         for i in range(0, len(rows), 200):
             if key.find(".xlsx") != -1:
-                df = pd.DataFrame(rows[i : i + 200])
-                date_columns = df.select_dtypes(include=["datetime64[ns, UTC]"]).columns
+                # df = pd.DataFrame(rows[i : i + 200])
+                # date_columns = df.select_dtypes(include=["datetime64[ns, UTC]"]).columns
+                # for date_column in date_columns:
+                #     df[date_column] = df[date_column].dt.tz_localize(None)
+                # buffer = BytesIO()
+                # with pd.ExcelWriter(buffer) as writer:
+                #     df.to_excel(excel_writer=writer, index=False)
+
+                df = pl.DataFrame(rows[i : i + 200])
+                date_columns = []
+                for col in df.columns:
+                    if df[col].dtype in (pl.Datetime, pl.Datetime("ns"), pl.Datetime("ns", "UTC")):
+                        date_columns.append(col)
                 for date_column in date_columns:
-                    df[date_column] = df[date_column].dt.tz_localize(None)
+                    df = df.with_columns(
+                        pl.col(date_column).dt.replace_time_zone(None)
+                    )
                 buffer = BytesIO()
-                with pd.ExcelWriter(buffer) as writer:
-                    df.to_excel(excel_writer=writer, index=False)
+                df.write_excel(buffer)
                 self.s3.put_object(
                     Bucket=bucket,
                     Key=key.replace(".xlsx", f"-{suffix}.xlsx"),
